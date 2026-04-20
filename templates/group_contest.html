@@ -1,0 +1,88 @@
+{% extends "layout/basic.html" %}
+{% block content %}
+<div class="row">
+  <div class="medium-9 columns">
+
+    {# ── Contest info header ──────────────────────────────── #}
+    <div class="section">
+      <div class="section__header">
+        <h1 class="section__title">競賽隊伍報名</h1>
+      </div>
+      <div class="section__body">
+        <dl class="description-list">
+          <dt>競賽 ID</dt><dd><code>{{ contestId }}</code></dd>
+        </dl>
+        <p style="margin-top:.5em; color:#555;">
+          選擇您要代表的隊伍進行報名。每支隊伍可以獨立報名，報名後仍可重新報名以更新資料。
+        </p>
+      </div>
+    </div>
+
+    {# ── Team list ─────────────────────────────────────────── #}
+    <div class="section">
+      <div class="section__header">
+        <h1 class="section__title">我的隊伍</h1>
+      </div>
+      <div class="section__body">
+        {% if myTeams.length %}
+        <table class="data-table">
+          <colgroup>
+            <col style="width:35%">
+            <col style="width:10%">
+            <col style="width:10%">
+            <col style="width:25%">
+            <col>
+          </colgroup>
+          <thead>
+            <tr>
+              <th>隊伍名稱</th>
+              <th>成員數</th>
+              <th>身分</th>
+              <th>報名狀態</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for team in myTeams %}
+            {% set entry = entryMap[team._id] %}
+            <tr>
+              <td>
+                <a href="{{ url('group_team_detail', {teamId: team._id}) }}">{{ team.name | escape }}</a>
+              </td>
+              <td>{{ team.members.length }}</td>
+              <td>{% if team.ownerId === user._id %}隊長{% else %}成員{% endif %}</td>
+              <td>
+                {% if entry %}
+                  <span style="color:#27ae60;">✔ 已報名</span>
+                  <br><small style="color:#888;">{{ entry.updatedAt }}</small>
+                {% else %}
+                  <span style="color:#aaa;">尚未報名</span>
+                {% endif %}
+              </td>
+              <td>
+                <a class="{% if entry %}button{% else %}primary button{% endif %} small"
+                   href="{{ url('group_contest_register', {contestId: contestId, teamId: team._id}) }}">
+                  {% if entry %}重新報名{% else %}前往報名{% endif %}
+                </a>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p class="nothing-icon">
+          您尚未加入任何隊伍。
+          <a href="{{ url('group_team_create') }}">建立新隊伍</a>
+          或請隊長邀請您加入。
+        </p>
+        {% endif %}
+      </div>
+    </div>
+
+    <div style="margin-top:1em;">
+      <a class="button" href="{{ url('group_teams') }}">← 返回隊伍列表</a>
+    </div>
+
+  </div>
+</div>
+{% endblock %}

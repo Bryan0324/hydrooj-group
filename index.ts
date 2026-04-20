@@ -117,6 +117,12 @@ async function getContestEntry(contestId: string, teamId: string): Promise<Conte
   return doc as ContestEntryDoc | null;
 }
 
+async function listContestEntries(contestId: string, teamIds: string[]): Promise<ContestEntryDoc[]> {
+  if (!teamIds.length) return [];
+  const filter: Filter<ContestEntryDoc> = { contestId, teamId: { $in: teamIds } } as unknown as Filter<ContestEntryDoc>;
+  return (await contestEntriesColl.find(filter).toArray()) as ContestEntryDoc[];
+}
+
 async function inviteMember(
   teamId: string,
   inviterId: number,
@@ -300,6 +306,19 @@ class InvitationRespondHandler extends Handler {
   }
 }
 
+class ContestLandingHandler extends Handler {
+  async get(_domainId?: string): Promise<void> {
+    const contestId = String(requireParam(this, 'contestId'));
+    const myTeams = await listMyTeams(this.user._id);
+    const teamIds = myTeams.map((t) => t._id);
+    const entries = await listContestEntries(contestId, teamIds);
+    const entryMap: Record<string, ContestEntryDoc> = {};
+    for (const e of entries) entryMap[e.teamId] = e;
+    this.response.template = 'group_contest.html';
+    this.response.body = { contestId, myTeams, entryMap };
+  }
+}
+
 class ContestTeamRegisterHandler extends Handler {
   async get(_domainId?: string): Promise<void> {
     const contestId = String(requireParam(this, 'contestId'));
@@ -331,6 +350,7 @@ export function apply(ctx: Context): void {
   ctx.Route('group_team_detail', '/group/team/:teamId', TeamDetailHandler, PRIV.PRIV_USER_PROFILE);
   ctx.Route('group_team_invite', '/group/team/:teamId/invite', TeamInviteHandler, PRIV.PRIV_USER_PROFILE);
   ctx.Route('group_invitation_respond', '/group/invitation/:invitationId/respond', InvitationRespondHandler, PRIV.PRIV_USER_PROFILE);
+  ctx.Route('group_contest', '/group/contest/:contestId', ContestLandingHandler, PRIV.PRIV_USER_PROFILE);
   ctx.Route('group_contest_register', '/group/contest/:contestId/team/:teamId/register', ContestTeamRegisterHandler, PRIV.PRIV_USER_PROFILE);
 
   // Navigation bar entry — visible to all logged-in users
