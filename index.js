@@ -26,6 +26,18 @@ function pickParam(handler, key) {
   return body[key];
 }
 
+function requireParam(handler, key) {
+  const value = pickParam(handler, key);
+  if (value === undefined || value === null || value === '') {
+    throw new BadRequestError(`${key} is required`);
+  }
+  return value;
+}
+
+function parseBoolean(value) {
+  return value === true || value === 'true' || value === 1 || value === '1';
+}
+
 async function createTeam(ownerId, name) {
   const team = core.createTeamRecord({
     id: genId(),
@@ -84,15 +96,17 @@ async function registerContestAsTeam(contestId, teamId, operatorId) {
   const identity = core.createTeamIdentity(team);
   const participants = core.resolveIdentity(identity);
   const entry = {
-    _id: `${contestId}:${teamId}`,
     contestId,
     teamId,
     identity,
     participants,
-    createdAt: new Date(),
     updatedAt: new Date(),
   };
-  await contestEntriesColl.updateOne({ _id: entry._id }, { $set: entry }, { upsert: true });
+  await contestEntriesColl.updateOne(
+    { contestId, teamId },
+    { $set: entry, $setOnInsert: { _id: genId(), createdAt: new Date() } },
+    { upsert: true },
+  );
   return entry;
 }
 
@@ -101,7 +115,11 @@ const groupModel = {
   inviteMember,
   respondInvitation,
   registerContestAsTeam,
-  getTeamIdentity: async (teamId) => core.createTeamIdentity(await getTeam(teamId)),
+  getTeamIdentity: async (teamId) => {
+    const team = await getTeam(teamId);
+    if (!team) throw new NotFoundError(teamId);
+    return core.createTeamIdentity(team);
+  },
   getUserIdentity: (userId) => core.createUserIdentity(userId),
   resolveIdentity: core.resolveIdentity,
 };
@@ -112,7 +130,7 @@ if (global.Hydro && global.Hydro.model) {
 
 class TeamCreateHandler extends Handler {
   async post() {
-    const name = pickParam(this, 'name');
+    const name = requireParam(this, 'name');
     const team = await groupModel.createTeam(this.user._id, name);
     this.response.body = { team };
   }
@@ -120,8 +138,12 @@ class TeamCreateHandler extends Handler {
 
 class TeamInviteHandler extends Handler {
   async post() {
-    const teamId = pickParam(this, 'teamId');
-    const inviteeId = Number(pickParam(this, 'inviteeId'));
+    const teamId = requireParam(this, 'teamId');
+    const rawInviteeId = requireParam(this, 'inviteeId');
+    const inviteeId = Number.parseInt(String(rawInviteeId), 10);
+    if (Number.isNaN(inviteeId) || inviteeId <= 0 || String(inviteeId) !== String(rawInviteeId).trim()) {
+      throw new BadRequestError('inviteeId must be a valid positive integer');
+    }
     const invitation = await groupModel.inviteMember(teamId, this.user._id, inviteeId);
     this.response.body = { invitation };
   }
@@ -129,17 +151,17 @@ class TeamInviteHandler extends Handler {
 
 class InvitationRespondHandler extends Handler {
   async post() {
-    const invitationId = pickParam(this, 'invitationId');
+    const invitationId = requireParam(this, 'invitationId');
     const accept = pickParam(this, 'accept');
-    const invitation = await groupModel.respondInvitation(invitationId, this.user._id, accept === true || accept === 'true' || accept === 1 || accept === '1');
+    const invitation = await groupModel.respondInvitation(invitationId, this.user._id, parseBoolean(accept));
     this.response.body = { invitation };
   }
 }
 
 class ContestTeamRegisterHandler extends Handler {
   async post() {
-    const contestId = pickParam(this, 'contestId');
-    const teamId = pickParam(this, 'teamId');
+    const contestId = requireParam(this, 'contestId');
+    const teamId = requireParam(this, 'teamId');
     const entry = await groupModel.registerContestAsTeam(contestId, teamId, this.user._id);
     this.response.body = { entry };
   }

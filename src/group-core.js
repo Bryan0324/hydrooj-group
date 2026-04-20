@@ -12,7 +12,7 @@ const INVITATION_STATUS = Object.freeze({
 });
 
 function ensureNonEmptyName(name) {
-  if (typeof name !== 'string' || !name.trim()) throw new Error('Team name is required');
+  if (typeof name !== 'string' || !name.trim()) throw new Error('Team name must be a non-empty string');
   return name.trim();
 }
 
@@ -61,8 +61,12 @@ function canInvite(team, inviterId, inviteeId) {
 
 function applyInvitationDecision(invitation, userId, accept) {
   if (!invitation) throw new Error('Invitation not found');
-  if (invitation.status !== INVITATION_STATUS.PENDING) throw new Error('Invitation is not pending');
-  if (invitation.inviteeId !== userId) throw new Error('Only invitee can respond');
+  if (invitation.status !== INVITATION_STATUS.PENDING) {
+    throw new Error(`Invitation ${invitation._id || ''} is not pending`);
+  }
+  if (invitation.inviteeId !== userId) {
+    throw new Error(`Only invitee ${invitation.inviteeId} can respond`);
+  }
   return {
     ...invitation,
     status: accept ? INVITATION_STATUS.ACCEPTED : INVITATION_STATUS.DECLINED,
