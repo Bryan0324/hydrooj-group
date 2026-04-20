@@ -1,5 +1,7 @@
 # hydrooj-group
 
+**English** | [繁體中文](./README.zh-TW.md)
+
 HydroOJ group plugin:
 
 - users can create teams
