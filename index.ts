@@ -111,6 +111,12 @@ async function listPendingInvitations(userId: number): Promise<InvitationDoc[]> 
   return (await invitationsColl.find(filter).toArray()) as InvitationDoc[];
 }
 
+async function getContestEntry(contestId: string, teamId: string): Promise<ContestEntryDoc | null> {
+  const filter: Filter<ContestEntryDoc> = { contestId, teamId };
+  const doc = await contestEntriesColl.findOne(filter);
+  return doc as ContestEntryDoc | null;
+}
+
 async function inviteMember(
   teamId: string,
   inviterId: number,
@@ -295,6 +301,17 @@ class InvitationRespondHandler extends Handler {
 }
 
 class ContestTeamRegisterHandler extends Handler {
+  async get(_domainId?: string): Promise<void> {
+    const contestId = String(requireParam(this, 'contestId'));
+    const teamId = String(requireParam(this, 'teamId'));
+    const team = await getTeam(teamId);
+    if (!team) throw new NotFoundError(teamId);
+    if (!team.members.includes(this.user._id)) throw new PermissionError('Not a team member');
+    const existingEntry = await getContestEntry(contestId, teamId);
+    this.response.template = 'group_contest_register.html';
+    this.response.body = { contestId, team, existingEntry };
+  }
+
   async post(_domainId?: string): Promise<void> {
     const contestId = String(requireParam(this, 'contestId'));
     const teamId = String(requireParam(this, 'teamId'));
