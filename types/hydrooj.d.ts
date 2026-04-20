@@ -45,6 +45,23 @@ declare module 'hydrooj' {
     on(event: string, callback: (...args: unknown[]) => unknown): () => void;
     emit(event: string, ...args: unknown[]): void;
     parallel(event: string, ...args: unknown[]): Promise<void>;
+    /**
+     * Inject a UI component into a named front-end slot (e.g. 'Nav',
+     * 'ProblemAdd', 'ControlPanel'). Optional permission / privilege guards
+     * can be appended; the component is only shown to users that satisfy all
+     * of them.
+     *
+     * @param node   Slot name (e.g. 'Nav')
+     * @param name   Route name used to build the link URL
+     * @param args   Extra display options (icon, nameTab, nameI18n, …)
+     * @param permPrivChecker  Privilege flag(s) that must be held by the viewer
+     */
+    injectUI(
+      node: string,
+      name: string,
+      args?: Record<string, unknown>,
+      ...permPrivChecker: number[]
+    ): void;
   }
 
   // ----------------------------------------------------------------

@@ -98,6 +98,19 @@ async function getTeam(teamId: string): Promise<TeamDoc | null> {
   return doc as TeamDoc | null;
 }
 
+async function listMyTeams(userId: number): Promise<TeamDoc[]> {
+  const docs = await teamsColl.find({ members: userId } as unknown as Filter<TeamDoc>).toArray();
+  return docs as TeamDoc[];
+}
+
+async function listPendingInvitations(userId: number): Promise<InvitationDoc[]> {
+  const filter: Filter<InvitationDoc> = {
+    inviteeId: userId,
+    status: INVITATION_STATUS.PENDING,
+  };
+  return (await invitationsColl.find(filter).toArray()) as InvitationDoc[];
+}
+
 async function inviteMember(
   teamId: string,
   inviterId: number,
@@ -198,7 +211,37 @@ if (g?.Hydro?.model) {
 // HTTP Handlers
 // ----------------------------------------------------------------
 
+class TeamListHandler extends Handler {
+  async get(_domainId?: string): Promise<void> {
+    const myTeams = await listMyTeams(this.user._id);
+    const pendingInvitations = await listPendingInvitations(this.user._id);
+
+    // Enrich each invitation with its team's display name.
+    const teamIds = pendingInvitations.map((inv) => inv.teamId);
+    const teamDocs = teamIds.length
+      ? ((await teamsColl
+          .find({ _id: { $in: teamIds } } as unknown as Filter<TeamDoc>)
+          .toArray()) as TeamDoc[])
+      : [];
+    const teamNameMap: Record<string, string> = {};
+    for (const t of teamDocs) teamNameMap[t._id] = t.name;
+
+    const enrichedInvitations = pendingInvitations.map((inv) => ({
+      ...inv,
+      teamName: teamNameMap[inv.teamId] ?? inv.teamId,
+    }));
+
+    this.response.template = 'group_teams.html';
+    this.response.body = { myTeams, pendingInvitations: enrichedInvitations };
+  }
+}
+
 class TeamCreateHandler extends Handler {
+  async get(_domainId?: string): Promise<void> {
+    this.response.template = 'group_team_create.html';
+    this.response.body = {};
+  }
+
   async post(_domainId?: string): Promise<void> {
     const name = String(requireParam(this, 'name'));
     const team = await groupModel.createTeam(this.user._id, name);
@@ -219,7 +262,26 @@ class TeamInviteHandler extends Handler {
   }
 }
 
+class TeamDetailHandler extends Handler {
+  async get(_domainId?: string): Promise<void> {
+    const teamId = String(requireParam(this, 'teamId'));
+    const team = await getTeam(teamId);
+    if (!team) throw new NotFoundError(teamId);
+    if (!team.members.includes(this.user._id)) throw new PermissionError('Not a team member');
+    this.response.template = 'group_team_detail.html';
+    this.response.body = { team, isOwner: team.ownerId === this.user._id };
+  }
+}
+
 class InvitationRespondHandler extends Handler {
+  async get(_domainId?: string): Promise<void> {
+    const invitationId = String(requireParam(this, 'invitationId'));
+    const raw = await invitationsColl.findOne({ _id: invitationId } as Filter<InvitationDoc>);
+    if (!raw) throw new NotFoundError(invitationId);
+    this.response.template = 'group_invitation_respond.html';
+    this.response.body = { invitation: raw as InvitationDoc };
+  }
+
   async post(_domainId?: string): Promise<void> {
     const invitationId = String(requireParam(this, 'invitationId'));
     const accept = pickParam(this, 'accept');
@@ -246,10 +308,16 @@ class ContestTeamRegisterHandler extends Handler {
 // ----------------------------------------------------------------
 
 export function apply(ctx: Context): void {
+  // UI pages
+  ctx.Route('group_teams', '/group/teams', TeamListHandler, PRIV.PRIV_USER_PROFILE);
   ctx.Route('group_team_create', '/group/team/create', TeamCreateHandler, PRIV.PRIV_USER_PROFILE);
+  ctx.Route('group_team_detail', '/group/team/:teamId', TeamDetailHandler, PRIV.PRIV_USER_PROFILE);
   ctx.Route('group_team_invite', '/group/team/:teamId/invite', TeamInviteHandler, PRIV.PRIV_USER_PROFILE);
   ctx.Route('group_invitation_respond', '/group/invitation/:invitationId/respond', InvitationRespondHandler, PRIV.PRIV_USER_PROFILE);
   ctx.Route('group_contest_register', '/group/contest/:contestId/team/:teamId/register', ContestTeamRegisterHandler, PRIV.PRIV_USER_PROFILE);
+
+  // Navigation bar entry — visible to all logged-in users
+  ctx.injectUI('Nav', 'group_teams', { icon: 'group', nameTab: 'Team', nameI18n: 'group_nav_team' }, PRIV.PRIV_USER_PROFILE);
 }
 
 export { groupModel };
