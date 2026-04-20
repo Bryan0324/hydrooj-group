@@ -19,6 +19,13 @@ function genId() {
   return crypto.randomUUID().replace(/-/g, '');
 }
 
+function pickParam(handler, key) {
+  const params = (handler.request && handler.request.params) || {};
+  const body = (handler.request && handler.request.body) || {};
+  if (params[key] !== undefined) return params[key];
+  return body[key];
+}
+
 async function createTeam(ownerId, name) {
   const team = core.createTeamRecord({
     id: genId(),
@@ -57,7 +64,10 @@ async function respondInvitation(invitationId, userId, accept) {
   const invitation = await invitationsColl.findOne({ _id: invitationId });
   if (!invitation) throw new NotFoundError(invitationId);
   const updated = core.applyInvitationDecision(invitation, userId, accept);
-  await invitationsColl.updateOne({ _id: invitationId }, { $set: updated });
+  await invitationsColl.updateOne(
+    { _id: invitationId },
+    { $set: { status: updated.status, updatedAt: updated.updatedAt } },
+  );
   if (updated.status === core.INVITATION_STATUS.ACCEPTED) {
     await teamsColl.updateOne(
       { _id: updated.teamId },
@@ -102,7 +112,7 @@ if (global.Hydro && global.Hydro.model) {
 
 class TeamCreateHandler extends Handler {
   async post() {
-    const { name } = this.request.body || {};
+    const name = pickParam(this, 'name');
     const team = await groupModel.createTeam(this.user._id, name);
     this.response.body = { team };
   }
@@ -110,7 +120,8 @@ class TeamCreateHandler extends Handler {
 
 class TeamInviteHandler extends Handler {
   async post() {
-    const { teamId, inviteeId } = this.request.body || {};
+    const teamId = pickParam(this, 'teamId');
+    const inviteeId = Number(pickParam(this, 'inviteeId'));
     const invitation = await groupModel.inviteMember(teamId, this.user._id, inviteeId);
     this.response.body = { invitation };
   }
@@ -118,15 +129,17 @@ class TeamInviteHandler extends Handler {
 
 class InvitationRespondHandler extends Handler {
   async post() {
-    const { invitationId, accept = false } = this.request.body || {};
-    const invitation = await groupModel.respondInvitation(invitationId, this.user._id, !!accept);
+    const invitationId = pickParam(this, 'invitationId');
+    const accept = pickParam(this, 'accept');
+    const invitation = await groupModel.respondInvitation(invitationId, this.user._id, accept === true || accept === 'true' || accept === 1 || accept === '1');
     this.response.body = { invitation };
   }
 }
 
 class ContestTeamRegisterHandler extends Handler {
   async post() {
-    const { contestId, teamId } = this.request.body || {};
+    const contestId = pickParam(this, 'contestId');
+    const teamId = pickParam(this, 'teamId');
     const entry = await groupModel.registerContestAsTeam(contestId, teamId, this.user._id);
     this.response.body = { entry };
   }

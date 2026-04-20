@@ -11,7 +11,8 @@ test('team owner is included in normalized members', () => {
     name: 'Alpha',
     members: [1002, 1001, 1003],
   });
-  assert.deepEqual(team.members.sort((a, b) => a - b), [1001, 1002, 1003]);
+  const members = [...team.members].sort((a, b) => a - b);
+  assert.deepEqual(members, [1001, 1002, 1003]);
 });
 
 test('owner can invite non-member', () => {
@@ -46,5 +47,6 @@ test('team identity resolves all members for contest compatibility', () => {
     members: [1002, 1003],
   });
   const identity = core.createTeamIdentity(team);
-  assert.deepEqual(core.resolveIdentity(identity).sort((a, b) => a - b), [1001, 1002, 1003]);
+  const participants = core.resolveIdentity(identity).sort((a, b) => a - b);
+  assert.deepEqual(participants, [1001, 1002, 1003]);
 });
