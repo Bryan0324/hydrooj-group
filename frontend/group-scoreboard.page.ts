@@ -10,6 +10,16 @@ interface ContestEntriesResponse {
   entries: TeamEntry[];
 }
 
+/** Row data cloned from the individual scoreboard for one team member. */
+interface MemberRowSnapshot {
+  uid: number;
+  /** The numeric rank read from the first cell (or Infinity if not found). */
+  rank: number;
+  /** Full HTML of the row — used to clone cells into the team table. */
+  cells: HTMLCollectionOf<HTMLTableCellElement>;
+  row: HTMLTableRowElement;
+}
+
 /**
  * Extracts the contest tid from the current URL.
  * Supports /contest/:tid and /d/:domainId/contest/:tid.
@@ -51,9 +61,15 @@ function extractUidFromRow(row: HTMLTableRowElement): number | null {
   return null;
 }
 
+function extractRankFromRow(row: HTMLTableRowElement): number {
+  const firstCell = row.querySelector<HTMLTableCellElement>('td:first-child');
+  if (!firstCell) return Infinity;
+  const n = parseInt(firstCell.textContent?.trim() ?? '', 10);
+  return Number.isNaN(n) ? Infinity : n;
+}
+
 /**
- * Builds a map from userId → TeamEntry so we can look up which team each
- * scoreboard row belongs to in O(1).
+ * Builds a map from userId → TeamEntry in O(participants_total).
  */
 function buildUserTeamMap(entries: TeamEntry[]): Map<number, TeamEntry> {
   const map = new Map<number, TeamEntry>();
@@ -66,68 +82,16 @@ function buildUserTeamMap(entries: TeamEntry[]): Map<number, TeamEntry> {
 }
 
 /**
- * Replaces the user name / link cell in a row with a plain team-name label.
+ * Reads all rows from the existing individual scoreboard table and returns
+ * a team → best-ranked member snapshot map.
+ * The individual scoreboard is NOT modified.
  */
-function replaceWithTeamName(row: HTMLTableRowElement, teamName: string): void {
-  const userLink = row.querySelector<HTMLAnchorElement>('a[href*="/user/"]');
-  if (userLink) {
-    const span = document.createElement('span');
-    span.textContent = teamName;
-    span.style.fontWeight = 'bold';
-    userLink.replaceWith(span);
-    return;
-  }
-  // Fallback: look for a cell with a known class
-  const nameCell = row.querySelector<HTMLElement>(
-    '.user-profile-name, [class*="username"], [class*="user-name"]',
-  );
-  if (nameCell) {
-    nameCell.textContent = teamName;
-    nameCell.style.fontWeight = 'bold';
-  }
-}
-
-/**
- * Re-numbers the rank column for all visible rows sequentially.
- * Looks for the first <td> in each row that contains only a number.
- */
-function renumberRanks(tbody: HTMLElement): void {
-  const visibleRows = Array.from(
-    tbody.querySelectorAll<HTMLTableRowElement>('tr'),
-  ).filter((r) => r.style.display !== 'none');
-
-  let rank = 1;
-  for (const row of visibleRows) {
-    const firstCell = row.querySelector<HTMLTableCellElement>('td:first-child');
-    if (firstCell && /^\s*\d+\s*$/.test(firstCell.textContent ?? '')) {
-      firstCell.textContent = String(rank);
-    }
-    rank++;
-  }
-}
-
-/**
- * Main DOM-manipulation entry point.
- *
- * For every team that has registered for this contest:
- *   - The highest-ranked member row is kept and relabelled with the team name.
- *   - All other member rows belonging to the same team are hidden.
- * Individual participants (no team) are left untouched.
- */
-function applyTeamGrouping(userTeamMap: Map<number, TeamEntry>): void {
-  // Locate the scoreboard table — try several common selectors used by HydroOJ
-  const table = document.querySelector<HTMLTableElement>(
-    'table.contest__rank-table, table[class*="rank"], table[class*="scoreboard"], .typo table, table',
-  );
-  if (!table) return;
-  const tbody = table.querySelector<HTMLElement>('tbody');
-  if (!tbody) return;
-
+function collectTeamSnapshots(
+  tbody: HTMLElement,
+  userTeamMap: Map<number, TeamEntry>,
+): Map<string, MemberRowSnapshot> {
+  const best = new Map<string, MemberRowSnapshot>();
   const rows = Array.from(tbody.querySelectorAll<HTMLTableRowElement>('tr'));
-
-  // First pass: build team → [rows in rank order] map
-  const teamRowsMap = new Map<string, HTMLTableRowElement[]>();
-  const rowToEntry = new Map<HTMLTableRowElement, TeamEntry>();
 
   for (const row of rows) {
     const uid = extractUidFromRow(row);
@@ -135,29 +99,107 @@ function applyTeamGrouping(userTeamMap: Map<number, TeamEntry>): void {
     const entry = userTeamMap.get(uid);
     if (!entry) continue;
 
-    rowToEntry.set(row, entry);
-    if (!teamRowsMap.has(entry.teamId)) teamRowsMap.set(entry.teamId, []);
-    teamRowsMap.get(entry.teamId)!.push(row);
-  }
-
-  // Second pass: keep first row per team, rename it, hide the rest
-  for (const memberRows of teamRowsMap.values()) {
-    if (!memberRows.length) continue;
-    const entry = rowToEntry.get(memberRows[0])!;
-
-    // Label the top-ranked row with the team name
-    replaceWithTeamName(memberRows[0], entry.teamName);
-    memberRows[0].setAttribute('data-group-team-id', entry.teamId);
-    memberRows[0].title = `隊伍: ${entry.teamName}`;
-
-    // Hide the remaining member rows
-    for (let i = 1; i < memberRows.length; i++) {
-      memberRows[i].style.display = 'none';
+    const rank = extractRankFromRow(row);
+    const existing = best.get(entry.teamId);
+    if (!existing || rank < existing.rank) {
+      best.set(entry.teamId, { uid, rank, cells: row.cells, row });
     }
   }
+  return best;
+}
 
-  // Re-number ranks to close the gaps left by hidden rows
-  renumberRanks(tbody);
+/**
+ * Escapes HTML special characters.
+ */
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/**
+ * Builds and injects a standalone "隊伍排行榜" section above the existing
+ * individual scoreboard.  The individual scoreboard is left completely intact.
+ */
+function injectTeamScoreboardPanel(
+  entries: TeamEntry[],
+  teamSnapshots: Map<string, MemberRowSnapshot>,
+  anchorTable: HTMLTableElement,
+): void {
+  // Sort teams by best-member rank (ascending)
+  const sortedEntries = [...entries].sort((a, b) => {
+    const rankA = teamSnapshots.get(a.teamId)?.rank ?? Infinity;
+    const rankB = teamSnapshots.get(b.teamId)?.rank ?? Infinity;
+    return rankA - rankB;
+  });
+
+  // Determine column headers from the existing table
+  const existingThead = anchorTable.querySelector<HTMLElement>('thead');
+  const headerCells = existingThead
+    ? Array.from(existingThead.querySelectorAll<HTMLElement>('th'))
+    : [];
+
+  // Build header row: replace the "user/name" column header with "隊伍名稱"
+  const nameColIndex = headerCells.findIndex((th) =>
+    /user|name|名|選手|contestant/i.test(th.textContent ?? ''),
+  );
+
+  const thHtml = headerCells.map((th, i) => {
+    const label = i === nameColIndex ? '隊伍名稱' : (th.textContent?.trim() ?? '');
+    return `<th>${escapeHtml(label)}</th>`;
+  }).join('');
+
+  // Build body rows
+  const tbodyRows = sortedEntries.map((entry, idx) => {
+    const snap = teamSnapshots.get(entry.teamId);
+    if (!snap) return '';
+
+    // Clone cells from the best-ranked member row; replace the name cell
+    const cellsHtml = Array.from(snap.cells).map((td, i) => {
+      if (i === 0) {
+        // Rank column — renumber sequentially
+        return `<td>${idx + 1}</td>`;
+      }
+      if (i === nameColIndex) {
+        // Name column — show team name (bold) + member count
+        return `<td><strong>${escapeHtml(entry.teamName)}</strong> <small>(${entry.participants.length} 人)</small></td>`;
+      }
+      // All other columns (score, penalty, problem cells …) — copy as-is
+      return `<td>${td.innerHTML}</td>`;
+    }).join('');
+
+    return `<tr data-group-team-id="${escapeHtml(entry.teamId)}">${cellsHtml}</tr>`;
+  }).filter(Boolean).join('');
+
+  const panel = document.createElement('div');
+  panel.id = 'group-team-scoreboard';
+  panel.className = 'section';
+  panel.innerHTML = `
+    <div class="section__header">
+      <h1 class="section__title">🏆 隊伍排行榜</h1>
+    </div>
+    <div class="section__body">
+      <p style="color:#888;font-size:.875em;margin-bottom:.5em;">
+        每支隊伍以最高排名成員的成績代表出賽；個人排行榜請見下方。
+      </p>
+      <div class="table-responsive-sm">
+        <table class="data-table">
+          ${headerCells.length ? `<thead><tr>${thHtml}</tr></thead>` : ''}
+          <tbody>${tbodyRows || '<tr><td colspan="99" style="text-align:center;color:#aaa;">尚無隊伍完成報名</td></tr>'}</tbody>
+        </table>
+      </div>
+    </div>`;
+
+  // Insert the panel before the container that holds the individual table
+  const tableContainer = anchorTable.closest<HTMLElement>('.section, .typo, main')
+    ?? anchorTable.parentElement;
+  if (tableContainer?.parentElement) {
+    tableContainer.parentElement.insertBefore(panel, tableContainer);
+  } else {
+    anchorTable.parentElement?.insertBefore(panel, anchorTable);
+  }
 }
 
 addPage(new NamedPage(['contest_scoreboard'], async () => {
@@ -170,5 +212,14 @@ addPage(new NamedPage(['contest_scoreboard'], async () => {
   const userTeamMap = buildUserTeamMap(data.entries);
   if (!userTeamMap.size) return;
 
-  applyTeamGrouping(userTeamMap);
+  // Locate the existing individual scoreboard table — do NOT modify it
+  const table = document.querySelector<HTMLTableElement>(
+    'table.contest__rank-table, table[class*="rank"], table[class*="scoreboard"], .typo table, table',
+  );
+  if (!table) return;
+  const tbody = table.querySelector<HTMLElement>('tbody');
+  if (!tbody) return;
+
+  const teamSnapshots = collectTeamSnapshots(tbody, userTeamMap);
+  injectTeamScoreboardPanel(data.entries, teamSnapshots, table);
 }));
