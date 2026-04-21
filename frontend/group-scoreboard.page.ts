@@ -286,8 +286,10 @@ function injectTeamScoreboardPanel(
     ?? anchorTable.parentElement;
   if (tableContainer?.parentElement) {
     tableContainer.parentElement.insertBefore(panel, tableContainer);
+  } else if (anchorTable.parentElement) {
+    anchorTable.parentElement.insertBefore(panel, anchorTable);
   } else {
-    anchorTable.parentElement?.insertBefore(panel, anchorTable);
+    console.warn('[group-scoreboard] Could not find a parent element to insert the team scoreboard panel.');
   }
 
   // Wire up export buttons
@@ -296,15 +298,25 @@ function injectTeamScoreboardPanel(
       ?.textContent?.trim() ?? '比賽';
   const baseName = `team-scoreboard-${contestTitle.replace(/\s+/g, '_').slice(0, MAX_EXPORT_FILENAME_TITLE_LENGTH)}`;
 
-  panel.querySelector('#group-export-csv')?.addEventListener('click', () => {
-    const csv = buildCsv(displayHeaders, exportRows);
-    triggerDownload(`${baseName}.csv`, csv, 'text/csv;charset=utf-8;');
-  });
+  const csvBtn = panel.querySelector('#group-export-csv');
+  if (csvBtn) {
+    csvBtn.addEventListener('click', () => {
+      const csv = buildCsv(displayHeaders, exportRows);
+      triggerDownload(`${baseName}.csv`, csv, 'text/csv;charset=utf-8;');
+    });
+  } else {
+    console.warn('[group-scoreboard] CSV export button (#group-export-csv) not found in panel.');
+  }
 
-  panel.querySelector('#group-export-html')?.addEventListener('click', () => {
-    const html = buildExportHtml(contestTitle, displayHeaders, exportRows);
-    triggerDownload(`${baseName}.html`, html, 'text/html;charset=utf-8;');
-  });
+  const htmlBtn = panel.querySelector('#group-export-html');
+  if (htmlBtn) {
+    htmlBtn.addEventListener('click', () => {
+      const html = buildExportHtml(contestTitle, displayHeaders, exportRows);
+      triggerDownload(`${baseName}.html`, html, 'text/html;charset=utf-8;');
+    });
+  } else {
+    console.warn('[group-scoreboard] HTML export button (#group-export-html) not found in panel.');
+  }
 }
 
 // ----------------------------------------------------------------
@@ -313,21 +325,36 @@ function injectTeamScoreboardPanel(
 
 addPage(new NamedPage(['contest_scoreboard'], async () => {
   const contestId = getContestIdFromUrl();
-  if (!contestId) return;
+  if (!contestId) {
+    console.warn('[group-scoreboard] Could not extract contest ID from URL:', window.location.pathname);
+    return;
+  }
 
   const data = await fetchEntries(contestId);
-  if (!data?.entries?.length) return;
+  if (!data?.entries?.length) {
+    console.warn('[group-scoreboard] No team entries returned for contest:', contestId);
+    return;
+  }
 
   const userTeamMap = buildUserTeamMap(data.entries);
-  if (!userTeamMap.size) return;
+  if (!userTeamMap.size) {
+    console.warn('[group-scoreboard] Team entries exist but no participant UIDs were found.');
+    return;
+  }
 
   // Locate the existing individual scoreboard table — do NOT modify it
   const table = document.querySelector<HTMLTableElement>(
     'table.contest__rank-table, table[class*="rank"], table[class*="scoreboard"], .typo table, table',
   );
-  if (!table) return;
+  if (!table) {
+    console.warn('[group-scoreboard] Could not find a scoreboard table in the DOM.');
+    return;
+  }
   const tbody = table.querySelector<HTMLElement>('tbody');
-  if (!tbody) return;
+  if (!tbody) {
+    console.warn('[group-scoreboard] Scoreboard table has no <tbody>.');
+    return;
+  }
 
   const teamSnapshots = collectTeamSnapshots(tbody, userTeamMap);
   injectTeamScoreboardPanel(data.entries, teamSnapshots, table);
