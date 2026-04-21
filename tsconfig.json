@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "commonjs",
+    "lib": ["ES2020"],
+    "outDir": "dist",
+    "rootDir": ".",
+    "strict": true,
+    "esModuleInterop": true,
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "skipLibCheck": true,
+    "declaration": true,
+    "ignoreDeprecations": "6.0",
+    "baseUrl": ".",
+    "paths": {
+      "hydrooj": ["./types/hydrooj.d.ts"]
+    },
+    "types": ["node"]
+  },
+  "include": ["*.ts", "src/**/*.ts", "test/**/*.ts", "types/**/*.d.ts"],
+  "exclude": ["node_modules", "dist"]
+}

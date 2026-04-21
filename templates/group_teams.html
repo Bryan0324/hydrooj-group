@@ -1,0 +1,88 @@
+{% extends "layout/basic.html" %}
+{% block content %}
+<div class="row">
+  <div class="medium-9 columns">
+
+    {# ── My Teams ─────────────────────────────────────────── #}
+    <div class="section">
+      <div class="section__header">
+        <h1 class="section__title">我的隊伍</h1>
+        <div class="section__header-actions">
+          <a class="primary button" href="{{ url('group_team_create') }}">建立隊伍</a>
+        </div>
+      </div>
+      <div class="section__body">
+        {% if myTeams.length %}
+        <table class="data-table">
+          <colgroup>
+            <col style="width:40%">
+            <col style="width:15%">
+            <col style="width:15%">
+            <col>
+          </colgroup>
+          <thead>
+            <tr>
+              <th>隊伍名稱</th>
+              <th>成員數</th>
+              <th>身分</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for team in myTeams %}
+            <tr>
+              <td>{{ team.name | escape }}</td>
+              <td>{{ team.members.length }}</td>
+              <td>{% if team.ownerId === user._id %}隊長{% else %}成員{% endif %}</td>
+              <td>
+                <a href="{{ url('group_team_detail', {teamId: team._id}) }}">查看</a>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p class="nothing-icon">你尚未加入任何隊伍。</p>
+        {% endif %}
+      </div>
+    </div>
+
+    {# ── Pending Invitations ───────────────────────────────── #}
+    {% if pendingInvitations.length %}
+    <div class="section">
+      <div class="section__header">
+        <h1 class="section__title">待處理邀請 ({{ pendingInvitations.length }})</h1>
+      </div>
+      <div class="section__body">
+        <table class="data-table">
+          <colgroup>
+            <col style="width:40%">
+            <col style="width:20%">
+            <col>
+          </colgroup>
+          <thead>
+            <tr>
+              <th>隊伍名稱</th>
+              <th>邀請者 ID</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for inv in pendingInvitations %}
+            <tr>
+              <td>{{ inv.teamName | escape }}</td>
+              <td>{{ inv.inviterId }}</td>
+              <td>
+                <a href="{{ url('group_invitation_respond', {invitationId: inv._id}) }}">回應邀請</a>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
+
+  </div>
+</div>
+{% endblock %}

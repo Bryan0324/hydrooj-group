@@ -1,0 +1,119 @@
+{% extends "layout/basic.html" %}
+{% block content %}
+<div class="row">
+  <div class="medium-8 columns">
+
+    {# ── Contest info ─────────────────────────────────────── #}
+    <div class="section">
+      <div class="section__header">
+        <h1 class="section__title">以隊伍身分報名競賽</h1>
+        <div class="section__header-actions">
+          <a class="button" href="{{ url('group_team_detail', {teamId: team._id}) }}">← 返回隊伍頁面</a>
+        </div>
+      </div>
+      <div class="section__body">
+        <dl class="description-list">
+          <dt>競賽 ID</dt><dd><code>{{ contestId }}</code></dd>
+          <dt>隊伍名稱</dt><dd>{{ team.name | escape }}</dd>
+          <dt>隊伍 ID</dt> <dd><code>{{ team._id }}</code></dd>
+        </dl>
+      </div>
+    </div>
+
+    {# ── Participant list ─────────────────────────────────── #}
+    <div class="section">
+      <div class="section__header">
+        <h1 class="section__title">報名成員（{{ team.members.length }} 人）</h1>
+      </div>
+      <div class="section__body">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>使用者 ID</th>
+              <th>身分</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for memberId in team.members %}
+            <tr>
+              <td>{{ memberId }}</td>
+              <td>{% if memberId === team.ownerId %}隊長{% else %}成員{% endif %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    {# ── Registration status / action ─────────────────────── #}
+    <div class="section">
+      <div class="section__header">
+        <h1 class="section__title">報名操作</h1>
+      </div>
+      <div class="section__body">
+
+        {% if existingEntry %}
+        <div class="alert alert--info" style="margin-bottom:1em;">
+          此隊伍已於
+          <strong>{{ existingEntry.updatedAt }}</strong>
+          完成報名。重新送出將更新報名資料。
+        </div>
+        {% endif %}
+
+        <div class="form__item" style="display:flex; gap:.75em; align-items:center;">
+          <button
+            id="btn-register"
+            class="primary button"
+            data-url="{{ url('group_contest_register', {contestId: contestId, teamId: team._id}) }}"
+            data-csrf="{{ csrfToken }}"
+          >
+            {% if existingEntry %}重新報名{% else %}確認報名{% endif %}
+          </button>
+          <a class="button" href="{{ url('group_team_detail', {teamId: team._id}) }}">取消</a>
+        </div>
+        <p id="register-msg" class="form__message" style="display:none"></p>
+
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+(function () {
+  var btn = document.getElementById('btn-register');
+  var msg = document.getElementById('register-msg');
+
+  btn.addEventListener('click', async function () {
+    btn.disabled = true;
+    msg.style.display = 'none';
+    try {
+      var res = await fetch(btn.dataset.url, {
+        method : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body   : JSON.stringify({ csrfToken: btn.dataset.csrf }),
+      });
+      var data = await res.json();
+      if (!res.ok) {
+        showMsg('error', data.message || '報名失敗');
+        btn.disabled = false;
+        return;
+      }
+      showMsg('success', '報名成功！即將返回隊伍頁面…');
+      setTimeout(function () {
+        location.href = '{{ url('group_team_detail', {teamId: team._id}) }}';
+      }, 1200);
+    } catch (err) {
+      showMsg('error', '網路錯誤，請稍後再試。');
+      btn.disabled = false;
+    }
+  });
+
+  function showMsg(type, text) {
+    msg.textContent = text;
+    msg.className   = 'form__message ' + (type === 'error' ? 'error' : 'success');
+    msg.style.display = '';
+  }
+}());
+</script>
+{% endblock %}

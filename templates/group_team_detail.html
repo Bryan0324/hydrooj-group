@@ -1,0 +1,154 @@
+{% extends "layout/basic.html" %}
+{% block content %}
+<div class="row">
+  <div class="medium-9 columns">
+
+    {# ── Team header ──────────────────────────────────────── #}
+    <div class="section">
+      <div class="section__header">
+        <h1 class="section__title">{{ team.name | escape }}</h1>
+        <div class="section__header-actions">
+          <a class="button" href="{{ url('group_teams') }}">← 返回隊伍列表</a>
+        </div>
+      </div>
+      <div class="section__body">
+        <dl class="description-list">
+          <dt>隊伍 ID</dt><dd><code>{{ team._id }}</code></dd>
+          <dt>狀態</dt>   <dd>{{ team.state }}</dd>
+          <dt>成員數</dt> <dd>{{ team.members.length }}</dd>
+          <dt>建立時間</dt><dd>{{ team.createdAt }}</dd>
+        </dl>
+        {% if not isOwner %}
+        <div style="margin-top:1em;">
+          <form id="leave-form" data-csrf="{{ csrfToken }}">
+            <button type="submit" class="button" style="color:#c0392b;border-color:#c0392b;">
+              離開隊伍
+            </button>
+          </form>
+          <p id="leave-msg" class="form__message" style="display:none"></p>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    {# ── Member list ──────────────────────────────────────── #}
+    <div class="section">
+      <div class="section__header">
+        <h1 class="section__title">成員列表</h1>
+      </div>
+      <div class="section__body">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>使用者 ID</th>
+              <th>身分</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for memberId in team.members %}
+            <tr>
+              <td>{{ memberId }}</td>
+              <td>{% if memberId === team.ownerId %}隊長{% else %}成員{% endif %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    {# ── Invite member (owner only) ──────────────────────── #}
+    {% if isOwner %}
+    <div class="section">
+      <div class="section__header">
+        <h1 class="section__title">邀請成員</h1>
+      </div>
+      <div class="section__body">
+        <form id="invite-form" data-csrf="{{ csrfToken }}">
+          <div class="form__item">
+            <label for="invitee-id">被邀請者的使用者 ID <span class="required">*</span></label>
+            <input
+              id="invitee-id"
+              name="inviteeId"
+              type="number"
+              class="textbox"
+              placeholder="輸入使用者 ID（數字）"
+              min="1"
+              required
+            >
+          </div>
+          <div class="form__item">
+            <button type="submit" class="primary button">送出邀請</button>
+          </div>
+          <p id="invite-msg" class="form__message" style="display:none"></p>
+        </form>
+      </div>
+    </div>
+    {% endif %}
+
+  </div>
+</div>
+
+<script>
+(function () {
+  var form = document.getElementById('invite-form');
+  if (!form) return;          // not owner — form not rendered
+  var msg = document.getElementById('invite-msg');
+
+  form.addEventListener('submit', async function (e) {
+    e.preventDefault();
+    msg.style.display = 'none';
+    var inviteeId = parseInt(form.elements['inviteeId'].value, 10);
+    if (!inviteeId || inviteeId <= 0) { showMsg('error', '請輸入有效的使用者 ID。'); return; }
+
+    try {
+      var res = await fetch('{{ url('group_team_invite', {teamId: team._id}) }}', {
+        method : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body   : JSON.stringify({ inviteeId: inviteeId, csrfToken: form.dataset.csrf }),
+      });
+      var data = await res.json();
+      if (!res.ok) { showMsg('error', data.message || '邀請失敗'); return; }
+      showMsg('success', '邀請已送出！');
+      form.reset();
+    } catch (err) {
+      showMsg('error', '網路錯誤，請稍後再試。');
+    }
+  });
+
+  function showMsg(type, text) {
+    msg.textContent = text;
+    msg.className   = 'form__message ' + (type === 'error' ? 'error' : 'success');
+    msg.style.display = '';
+  }
+}());
+
+(function () {
+  var form = document.getElementById('leave-form');
+  if (!form) return;          // owner — leave form not rendered
+  var msg = document.getElementById('leave-msg');
+
+  form.addEventListener('submit', async function (e) {
+    e.preventDefault();
+    if (!confirm('確認要離開隊伍嗎？')) return;
+    try {
+      var res = await fetch('{{ url('group_team_leave', {teamId: team._id}) }}', {
+        method : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body   : JSON.stringify({ csrfToken: form.dataset.csrf }),
+      });
+      var data = await res.json();
+      if (!res.ok) { showLeaveMsg('error', data.message || '離開隊伍失敗'); return; }
+      window.location.href = '{{ url('group_teams') }}';
+    } catch (err) {
+      showLeaveMsg('error', '網路錯誤，請稍後再試。');
+    }
+  });
+
+  function showLeaveMsg(type, text) {
+    msg.textContent = text;
+    msg.className   = 'form__message ' + (type === 'error' ? 'error' : 'success');
+    msg.style.display = '';
+  }
+}());
+</script>
+{% endblock %}

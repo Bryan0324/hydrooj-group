@@ -1,0 +1,72 @@
+{% extends "layout/basic.html" %}
+{% block content %}
+<div class="row">
+  <div class="medium-6 columns">
+
+    <div class="section">
+      <div class="section__header">
+        <h1 class="section__title">建立隊伍</h1>
+      </div>
+      <div class="section__body">
+        <form id="create-team-form" data-csrf="{{ csrfToken }}">
+          <div class="form__item">
+            <label for="team-name">隊伍名稱 <span class="required">*</span></label>
+            <input
+              id="team-name"
+              name="name"
+              type="text"
+              class="textbox"
+              placeholder="請輸入隊伍名稱"
+              maxlength="64"
+              required
+              autofocus
+            >
+          </div>
+          <div class="form__item">
+            <button type="submit" class="primary button">建立隊伍</button>
+            <a class="button" href="{{ url('group_teams') }}">取消</a>
+          </div>
+          <p id="create-team-msg" class="form__message" style="display:none"></p>
+        </form>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+(function () {
+  const form = document.getElementById('create-team-form');
+  const msg  = document.getElementById('create-team-msg');
+
+  form.addEventListener('submit', async function (e) {
+    e.preventDefault();
+    msg.style.display = 'none';
+    const name = form.elements['name'].value.trim();
+    if (!name) { showMsg('error', '隊伍名稱不可為空。'); return; }
+
+    try {
+      const res = await fetch('{{ url('group_team_create') }}', {
+        method : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body   : JSON.stringify({ name, csrfToken: form.dataset.csrf }),
+      });
+      const data = await res.json();
+      if (!res.ok) { showMsg('error', data.message || '建立失敗'); return; }
+      showMsg('success', '隊伍建立成功！即將跳轉…');
+      setTimeout(() => {
+        location.href = '/group/team/' + encodeURIComponent(data.team._id);
+      }, 800);
+    } catch (err) {
+      showMsg('error', '網路錯誤，請稍後再試。');
+    }
+  });
+
+  function showMsg(type, text) {
+    msg.textContent = text;
+    msg.className   = 'form__message ' + (type === 'error' ? 'error' : 'success');
+    msg.style.display = '';
+  }
+}());
+</script>
+{% endblock %}

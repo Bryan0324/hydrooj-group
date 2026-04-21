@@ -1,0 +1,68 @@
+{% extends "layout/basic.html" %}
+{% block content %}
+<div class="row">
+  <div class="medium-6 columns">
+
+    <div class="section">
+      <div class="section__header">
+        <h1 class="section__title">回應隊伍邀請</h1>
+      </div>
+      <div class="section__body">
+        <dl class="description-list">
+          <dt>邀請 ID</dt>  <dd><code>{{ invitation._id }}</code></dd>
+          <dt>隊伍 ID</dt>  <dd><code>{{ invitation.teamId }}</code></dd>
+          <dt>邀請者 ID</dt><dd>{{ invitation.inviterId }}</dd>
+          <dt>狀態</dt>     <dd>{{ invitation.status }}</dd>
+        </dl>
+
+        <div class="form__item" style="margin-top:1.5em; display:flex; gap:.75em;">
+          <button id="btn-accept" class="primary button"
+                  data-url="{{ url('group_invitation_respond', {invitationId: invitation._id}) }}"
+                  data-csrf="{{ csrfToken }}">接受邀請</button>
+          <button id="btn-decline" class="button">拒絕邀請</button>
+        </div>
+        <p id="respond-msg" class="form__message" style="display:none"></p>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+(function () {
+  var btnAccept  = document.getElementById('btn-accept');
+  var respondUrl = btnAccept.dataset.url;
+  var csrfToken  = btnAccept.dataset.csrf;
+  var msg        = document.getElementById('respond-msg');
+
+  btnAccept.addEventListener('click', function () { respond(true); });
+  document.getElementById('btn-decline').addEventListener('click', function () { respond(false); });
+
+  async function respond(accept) {
+    msg.style.display = 'none';
+    try {
+      var res = await fetch(respondUrl, {
+        method : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body   : JSON.stringify({ accept: accept, csrfToken: csrfToken }),
+      });
+      var data = await res.json();
+      if (!res.ok) { showMsg('error', data.message || '操作失敗'); return; }
+      var action = accept ? '已接受' : '已拒絕';
+      showMsg('success', action + '邀請！即將返回隊伍列表…');
+      btnAccept.disabled = true;
+      document.getElementById('btn-decline').disabled = true;
+      setTimeout(function () { location.href = '{{ url('group_teams') }}'; }, 1200);
+    } catch (err) {
+      showMsg('error', '網路錯誤，請稍後再試。');
+    }
+  }
+
+  function showMsg(type, text) {
+    msg.textContent = text;
+    msg.className   = 'form__message ' + (type === 'error' ? 'error' : 'success');
+    msg.style.display = '';
+  }
+}());
+</script>
+{% endblock %}

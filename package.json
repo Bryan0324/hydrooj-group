@@ -1,0 +1,26 @@
+{
+  "name": "hydrooj-group",
+  "version": "0.1.0",
+  "description": "HydroOJ group plugin for team invitations and team contest participation",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "tsc && node --test 'dist/test/**/*.test.js'"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT",
+  "peerDependencies": {
+    "hydrooj": "*"
+  },
+  "devDependencies": {
+    "@hydrooj/ui-default": "^4.58.0-beta.21",
+    "@types/node": "^25.6.0",
+    "typescript": "^6.0.3"
+  },
+  "dependencies": {
+    "hydrooj": "*"
+  }
+}
