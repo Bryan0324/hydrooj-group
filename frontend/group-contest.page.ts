@@ -70,37 +70,44 @@ function renderPanel(contestId: string, teams: TeamDoc[], entryMap: Record<strin
   }).join('');
 
   const section = document.createElement('div');
-  section.className = 'section';
-  section.id = 'group-contest-entry';
+  section.className = 'medium-12 columns';
   section.innerHTML = `
-    <div class="section__header">
-      <h1 class="section__title">隊伍報名</h1>
-    </div>
-    <div class="section__body">
-      <table class="data-table">
-        <colgroup>
-          <col style="width:40%">
-          <col style="width:10%">
-          <col style="width:20%">
-          <col>
-        </colgroup>
-        <thead>
-          <tr>
-            <th>隊伍名稱</th>
-            <th>成員數</th>
-            <th>報名狀態</th>
-            <th>操作</th>
-          </tr>
-        </thead>
-        <tbody>${rows}</tbody>
-      </table>
+    <div class="section" id="group-contest-entry">
+      <div class="section__header">
+        <h1 class="section__title">隊伍報名</h1>
+      </div>
+      <div class="section__body">
+        <table class="data-table">
+          <colgroup>
+            <col style="width:40%">
+            <col style="width:10%">
+            <col style="width:20%">
+            <col>
+          </colgroup>
+          <thead>
+            <tr>
+              <th>隊伍名稱</th>
+              <th>成員數</th>
+              <th>報名狀態</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
     </div>`;
 
   // Try common HydroOJ content containers in order of specificity.
   const container = document.querySelector<HTMLElement>('.main-content-column')
     ?? document.querySelector<HTMLElement>('.contest__detail')
     ?? document.querySelector<HTMLElement>('main .row > [class*="column"]')
-    ?? document.querySelector<HTMLElement>('main');
+    ?? document.querySelector<HTMLElement>('main')
+    ?? (() => {
+    const node = document
+      .evaluate('//*[@id="panel"]/div[3]/div', document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null)
+      .singleNodeValue;
+    return node instanceof HTMLElement ? node : null;
+  })();
 
   if (container) container.appendChild(section);
 }
