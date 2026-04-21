@@ -168,6 +168,18 @@ async function respondInvitation(
   return updated;
 }
 
+async function leaveTeam(teamId: string, userId: number): Promise<void> {
+  const team = await getTeam(teamId);
+  if (!team) throw new NotFoundError(teamId);
+  if (!team.members.includes(userId)) throw new PermissionError('Not a team member');
+  if (team.ownerId === userId) throw new BadRequestError('Owner cannot leave the team');
+  const teamFilter: Filter<TeamDoc> = { _id: teamId };
+  await teamsColl.updateOne(teamFilter, {
+    $pull: { members: userId },
+    $set: { updatedAt: new Date() },
+  } as unknown as UpdateFilter<TeamDoc>);
+}
+
 async function registerContestAsTeam(
   contestId: string,
   teamId: string,
@@ -200,6 +212,7 @@ async function registerContestAsTeam(
 
 const groupModel = {
   createTeam,
+  leaveTeam,
   inviteMember,
   respondInvitation,
   registerContestAsTeam,
@@ -338,6 +351,39 @@ class ContestTeamRegisterHandler extends Handler {
   }
 }
 
+class TeamLeaveHandler extends Handler {
+  async post(_domainId?: string): Promise<void> {
+    const teamId = String(requireParam(this, 'teamId'));
+    await groupModel.leaveTeam(teamId, this.user._id);
+    this.response.body = { ok: true };
+  }
+}
+
+class ContestAllEntriesApiHandler extends Handler {
+  async get(_domainId?: string): Promise<void> {
+    const contestId = String(requireParam(this, 'contestId'));
+    const allEntries = (await contestEntriesColl
+      .find({ contestId } as unknown as Filter<ContestEntryDoc>)
+      .toArray()) as ContestEntryDoc[];
+    if (!allEntries.length) {
+      this.response.body = { entries: [] };
+      return;
+    }
+    const teamIds = allEntries.map((e) => e.teamId);
+    const teamDocs = (await teamsColl
+      .find({ _id: { $in: teamIds } } as unknown as Filter<TeamDoc>)
+      .toArray()) as TeamDoc[];
+    const teamNameMap: Record<string, string> = {};
+    for (const t of teamDocs) teamNameMap[t._id] = t.name;
+    const entries = allEntries.map((e) => ({
+      teamId: e.teamId,
+      teamName: teamNameMap[e.teamId] ?? e.teamId,
+      participants: e.participants,
+    }));
+    this.response.body = { entries };
+  }
+}
+
 // ----------------------------------------------------------------
 // Plugin entry point — called by Hydro's plugin loader.
 // ----------------------------------------------------------------
@@ -348,8 +394,10 @@ export function apply(ctx: Context): void {
   ctx.Route('group_team_create', '/group/team/create', TeamCreateHandler, PRIV.PRIV_USER_PROFILE);
   ctx.Route('group_team_detail', '/group/team/:teamId', TeamDetailHandler, PRIV.PRIV_USER_PROFILE);
   ctx.Route('group_team_invite', '/group/team/:teamId/invite', TeamInviteHandler, PRIV.PRIV_USER_PROFILE);
+  ctx.Route('group_team_leave', '/group/team/:teamId/leave', TeamLeaveHandler, PRIV.PRIV_USER_PROFILE);
   ctx.Route('group_invitation_respond', '/group/invitation/:invitationId/respond', InvitationRespondHandler, PRIV.PRIV_USER_PROFILE);
   ctx.Route('group_contest_teams_api', '/group/api/contest/:contestId/teams', ContestTeamsApiHandler, PRIV.PRIV_USER_PROFILE);
+  ctx.Route('group_contest_entries_api', '/group/api/contest/:contestId/entries', ContestAllEntriesApiHandler, PRIV.PRIV_USER_PROFILE);
   ctx.Route('group_contest_register', '/group/contest/:contestId/team/:teamId/register', ContestTeamRegisterHandler, PRIV.PRIV_USER_PROFILE);
 
   // Navigation bar entry — visible to all logged-in users

@@ -18,6 +18,16 @@
           <dt>成員數</dt> <dd>{{ team.members.length }}</dd>
           <dt>建立時間</dt><dd>{{ team.createdAt }}</dd>
         </dl>
+        {% if not isOwner %}
+        <div style="margin-top:1em;">
+          <form id="leave-form" data-csrf="{{ csrfToken }}">
+            <button type="submit" class="button" style="color:#c0392b;border-color:#c0392b;">
+              離開隊伍
+            </button>
+          </form>
+          <p id="leave-msg" class="form__message" style="display:none"></p>
+        </div>
+        {% endif %}
       </div>
     </div>
 
@@ -106,6 +116,35 @@
   });
 
   function showMsg(type, text) {
+    msg.textContent = text;
+    msg.className   = 'form__message ' + (type === 'error' ? 'error' : 'success');
+    msg.style.display = '';
+  }
+}());
+
+(function () {
+  var form = document.getElementById('leave-form');
+  if (!form) return;          // owner — leave form not rendered
+  var msg = document.getElementById('leave-msg');
+
+  form.addEventListener('submit', async function (e) {
+    e.preventDefault();
+    if (!confirm('確認要離開隊伍嗎？')) return;
+    try {
+      var res = await fetch('{{ url('group_team_leave', {teamId: team._id}) }}', {
+        method : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body   : JSON.stringify({ csrfToken: form.dataset.csrf }),
+      });
+      var data = await res.json();
+      if (!res.ok) { showLeaveMsg('error', data.message || '離開隊伍失敗'); return; }
+      window.location.href = '{{ url('group_teams') }}';
+    } catch (err) {
+      showLeaveMsg('error', '網路錯誤，請稍後再試。');
+    }
+  });
+
+  function showLeaveMsg(type, text) {
     msg.textContent = text;
     msg.className   = 'form__message ' + (type === 'error' ? 'error' : 'success');
     msg.style.display = '';
